@@ -85,6 +85,13 @@ ruleTester.run('expect-expect', rule, {
       `,
       options: [{ additionalTestBlockFunctions: ['theoretically'] }],
     },
+    {
+      code: dedent`
+        import { it, expect } from '@jest/globals';
+        it('should pass', () => expect(true).toBeDefined());
+      `,
+      parserOptions: { sourceType: 'module' },
+    },
   ],
 
   invalid: [
@@ -170,6 +177,19 @@ ruleTester.run('expect-expect', rule, {
     {
       code: 'it("should also fail",() => expectSaga(mySaga).returns());',
       options: [{ assertFunctionNames: ['expect'] }],
+      errors: [
+        {
+          messageId: 'noAssertions',
+          type: AST_NODE_TYPES.CallExpression,
+        },
+      ],
+    },
+    {
+      code: dedent`
+        const expect = () => {};
+        it('should fail', () => expect(true).toBeDefined());
+      `,
+      parserOptions: { sourceType: 'module' },
       errors: [
         {
           messageId: 'noAssertions',

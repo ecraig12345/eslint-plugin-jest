@@ -10,7 +10,7 @@ module.exports = {
     'plugin:eslint-comments/recommended',
     'plugin:node/recommended',
     'plugin:@typescript-eslint/eslint-recommended',
-    'plugin:prettier/recommended',
+    // 'plugin:prettier/recommended',
   ],
   plugins: [
     'eslint-config',

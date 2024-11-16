@@ -27,6 +27,26 @@ ruleTester.run('max-nested-describe', rule, {
         })
       });
     `,
+    {
+      code: dedent`
+        import { describe } from '@jest/globals';
+
+        describe('foo', function() {
+          describe('bar', function () {
+            describe('baz', function () {
+              describe('qux', function () {
+                describe('qux', function () {
+                  it('should get something', () => {
+                    expect(getSomething()).toBe('Something');
+                  });
+                })
+              })
+            })
+          })
+        });
+      `,
+      parserOptions: { sourceType: 'module' },
+    },
     dedent`
       describe('foo', function() {
         describe('bar', function () {
@@ -121,6 +141,28 @@ ruleTester.run('max-nested-describe', rule, {
         });
       `,
       errors: [{ messageId: 'exceededMaxDepth', line: 6, column: 11 }],
+    },
+    {
+      code: dedent`
+        import { describe } from '@jest/globals';
+        describe('foo', function() {
+          describe('bar', function () {
+            describe('baz', function () {
+              describe('qux', function () {
+                describe('quxx', function () {
+                  describe('over limit', function () {
+                    it('should get something', () => {
+                      expect(getSomething()).toBe('Something');
+                    });
+                  });
+                });
+              });
+            });
+          });
+        });
+      `,
+      parserOptions: { sourceType: 'module' },
+      errors: [{ messageId: 'exceededMaxDepth', line: 7, column: 11 }],
     },
     {
       code: dedent`

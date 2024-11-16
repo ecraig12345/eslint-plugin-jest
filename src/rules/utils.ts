@@ -278,15 +278,17 @@ interface ExpectCall extends TSESTree.CallExpression {
  *  * be a `CallExpression`,
  *  * have an accessor named 'expect',
  *  * have a `parent`.
- *
- * @param {Node} node
- *
- * @return {node is ExpectCall}
  */
-export const isExpectCall = (node: TSESTree.Node): node is ExpectCall =>
+export const isExpectCall = (
+  node: TSESTree.Node,
+  scope?: TSESLint.Scope.Scope,
+  references?: ReferencesInScope,
+): node is ExpectCall =>
   node.type === AST_NODE_TYPES.CallExpression &&
   isSupportedAccessor(node.callee, 'expect') &&
-  node.parent !== undefined;
+  node.parent !== undefined &&
+  (scope === undefined ||
+    resolveToJestFn(scope, 'expect', references) !== null);
 
 interface ParsedExpectMember<
   Name extends ExpectPropertyName = ExpectPropertyName,
@@ -652,6 +654,7 @@ export const isFunction = (node: TSESTree.Node): node is FunctionExpression =>
 export const isHookCall = (
   node: TSESTree.CallExpression,
   scope: TSESLint.Scope.Scope,
+  references?: ReferencesInScope,
 ): node is JestFunctionCallExpressionWithIdentifierCallee<HookName> => {
   let name = findFirstCallPropertyName(node, []);
 
@@ -659,7 +662,7 @@ export const isHookCall = (
     return false;
   }
 
-  name = resolveToJestFn(scope, name);
+  name = resolveToJestFn(scope, name, references);
 
   return name !== null && HookName.hasOwnProperty(name);
 };
@@ -667,6 +670,7 @@ export const isHookCall = (
 export const getTestCallExpressionsFromDeclaredVariables = (
   declaredVariables: readonly TSESLint.Scope.Variable[],
   scope: TSESLint.Scope.Scope,
+  referencesInScope?: ReferencesInScope,
 ): Array<JestFunctionCallExpression<TestCaseName>> => {
   return declaredVariables.reduce<
     Array<JestFunctionCallExpression<TestCaseName>>
@@ -679,7 +683,7 @@ export const getTestCallExpressionsFromDeclaredVariables = (
             (node): node is JestFunctionCallExpression<TestCaseName> =>
               !!node &&
               node.type === AST_NODE_TYPES.CallExpression &&
-              isTestCaseCall(node, scope),
+              isTestCaseCall(node, scope, referencesInScope),
           ),
       ),
     [],
@@ -696,6 +700,7 @@ export const getTestCallExpressionsFromDeclaredVariables = (
 export const isTestCaseCall = (
   node: TSESTree.CallExpression,
   scope: TSESLint.Scope.Scope,
+  references?: ReferencesInScope,
 ): node is JestFunctionCallExpression<TestCaseName> => {
   let name = findFirstCallPropertyName(node, Object.keys(TestCaseProperty));
 
@@ -703,14 +708,22 @@ export const isTestCaseCall = (
     return false;
   }
 
-  name = resolveToJestFn(scope, name);
+  name = resolveToJestFn(scope, name, references);
 
   return name !== null && TestCaseName.hasOwnProperty(name);
 };
 
+export const isJestMemberCall = (
+  node: TSESTree.CallExpression,
+  scope: TSESLint.Scope.Scope,
+  references?: ReferencesInScope,
+): boolean =>
+  findFirstCallPropertyName(node) === 'jest' &&
+  resolveToJestFn(scope, 'jest', references) !== null;
+
 const findFirstCallPropertyName = (
   node: TSESTree.CallExpression,
-  properties: readonly string[],
+  properties?: readonly string[],
 ): string | null => {
   if (isIdentifier(node.callee)) {
     return node.callee.name;
@@ -726,7 +739,7 @@ const findFirstCallPropertyName = (
   if (
     callee.type === AST_NODE_TYPES.MemberExpression &&
     isSupportedAccessor(callee.property) &&
-    properties.includes(getAccessorValue(callee.property))
+    (!properties || properties.includes(getAccessorValue(callee.property)))
   ) {
     // if we're an `each()`, ensure we're the outer CallExpression (i.e `.each()()`)
     if (
@@ -760,6 +773,7 @@ const findFirstCallPropertyName = (
 export const isDescribeCall = (
   node: TSESTree.CallExpression,
   scope: TSESLint.Scope.Scope,
+  references?: ReferencesInScope,
 ): node is JestFunctionCallExpression<DescribeAlias> => {
   let name = findFirstCallPropertyName(node, Object.keys(DescribeProperty));
 
@@ -767,7 +781,7 @@ export const isDescribeCall = (
     return false;
   }
 
-  name = resolveToJestFn(scope, name);
+  name = resolveToJestFn(scope, name, references);
 
   return name !== null && DescribeAlias.hasOwnProperty(name);
 };
@@ -880,10 +894,18 @@ const describePossibleImportDef = (def: TSESLint.Scope.Definition) => {
   return null;
 };
 
-const collectReferences = (scope: TSESLint.Scope.Scope) => {
-  const locals = new Set();
+export interface ReferencesInScope {
+  locals: Set<string>;
+  imports: Map<string, ImportDetails>;
+  unresolved: Set<string>;
+}
+
+export const collectReferences = (
+  scope: TSESLint.Scope.Scope,
+): ReferencesInScope => {
+  const locals = new Set<string>();
   const imports = new Map<string, ImportDetails>();
-  const unresolved = new Set();
+  const unresolved = new Set<string>();
 
   let currentScope: TSESLint.Scope.Scope | null = scope;
 
@@ -919,8 +941,9 @@ const collectReferences = (scope: TSESLint.Scope.Scope) => {
 export const scopeHasLocalReference = (
   scope: TSESLint.Scope.Scope,
   referenceName: string,
+  references?: ReferencesInScope,
 ) => {
-  const references = collectReferences(scope);
+  references = references || collectReferences(scope);
 
   return (
     // referenceName was found as a local variable or function declaration.
@@ -933,8 +956,12 @@ export const scopeHasLocalReference = (
   );
 };
 
-const resolveToJestFn = (scope: TSESLint.Scope.Scope, identifier: string) => {
-  const references = collectReferences(scope);
+const resolveToJestFn = (
+  scope: TSESLint.Scope.Scope,
+  identifier: string,
+  references?: ReferencesInScope,
+) => {
+  references = references || collectReferences(scope);
 
   const maybeImport = references.imports.get(identifier);
 

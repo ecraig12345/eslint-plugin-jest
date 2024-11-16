@@ -62,6 +62,21 @@ ruleTester.run('consistent-test-it with fn=test', rule, {
       ],
     },
     {
+      code: 'import { it } from "@jest/globals"; it("foo")',
+      output: 'import { test } from "@jest/globals"; test("foo")',
+      options: [{ fn: TestCaseName.test }],
+      parserOptions: { sourceType: 'module' },
+      errors: [
+        {
+          messageId: 'consistentMethod',
+          data: {
+            testKeyword: TestCaseName.test,
+            oppositeTestKeyword: TestCaseName.it,
+          },
+        },
+      ],
+    },
+    {
       code: 'xit("foo")',
       output: 'xtest("foo")',
       options: [{ fn: TestCaseName.test }],
